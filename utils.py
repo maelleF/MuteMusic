@@ -1,7 +1,5 @@
-import os
-import librosa
-import soundfile
-
+import os, time
+from psychopy import core, logging
 import yt_dlp
 from yt_dlp.utils import download_range_func
 
@@ -31,9 +29,6 @@ def ytdl(url,timestamp,duration,outpath='./'):
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         error_code = ydl.download([url])
-
-def convert(track_path, type_in, type_out):
-    print('bleurp')
 
 if __name__ == "__main__" :
     tracks_dir = "/home/maellef/git/MuteMusic/data/test"
