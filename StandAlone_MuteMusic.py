@@ -1,32 +1,51 @@
-import csv
-from psychopy import visual
-from Task_MuteMusic import MuteMusic
+import csv, time
+from psychopy import visual, event, core
+from Task_MuteMusic import Track
 
 playlist_path = './subXX_runXX.csv'
 file = open(playlist_path, "r")
 tracks = list(csv.reader(file, delimiter=","))
 file.close()
 
-exp_win = visual.Window()
+questions = [
+    {
+    'index': None,
+    'itemText': "During the silences, did you imagine the missing part of the different audio tracks you’ve heard ?",
+    'itemWidth': 1,
+    "type": 'rating',
+    'responseWidth': 1,
+    'options': ['never', 'a few times', 'half the time', 'most of the time', 'always'],
+    'layout': 'horiz'
+    },
+    {
+    'index': None,
+    'itemText': "Did you recognise the song ?",
+    'itemWidth': 1,
+    'type': 'rating',
+    'responseWidth': 1,
+    'options': ['no', 'yes'],
+    'layout': 'horiz'
+    }]
 
-#basic instructions for psychopy--------------
-#instruction = visual.TextStim(win=exp_win, text=DEFAULT_INSTRUCTION)
-#instruction.draw()
-#exp_win.flip()
-#time.sleep(1) #core.wait(1.0)
+exp_win = visual.Window(units="height", allowStencil=True)
+imagery_form = visual.Form(win=exp_win, items=questions, units="height")
+ISI = core.StaticPeriod(win=exp_win)
 
 for i, track in enumerate(tracks):
     track_path = track[0]
-    Display_track = MuteMusic(track_path, exp_win)
+    Display_track = Track(track_path, exp_win, num=i+1)
     Display_track.run()
+    imagery_form.draw()
+    exp_win.flip()
 
-    #basic instructions for psychopy--------------
-    #track_nb = visual.TextStim(win=exp_win, text="track {}".format(i))
-    #track_nb.draw()
-    #track_path = track[0]
-    #track = sound.Sound(track_path)
-    #track.play()
-    #exp_win.flip()
-    #time.sleep(track.duration)#core.wait(2.0)
-
+    while True :
+        ISI.start(1)
+        keys = event.getKeys(keyList='uldra')
+        ISI.complete()
+        if 'a' in keys:
+            break
+        print(keys)
+    pass
+    
+        
 exp_win.close()
