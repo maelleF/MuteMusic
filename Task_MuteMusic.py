@@ -1,8 +1,7 @@
-import os, time, csv, random
+import os, time, csv, pandas
 from psychopy import prefs
 prefs.hardware['audioLib'] = ['sounddevice']
 from psychopy import visual, sound, event, core
-
 
 #task : 1 run = 1 playlist = around 10 audio tracks
 #repeat for n songs in subXX_runXX.csv :
@@ -14,29 +13,56 @@ from psychopy import visual, sound, event, core
 #Global Variables if multiples tasks
 INSTRUCTION_DURATION = 3
 DEFAULT_INSTRUCTION = """Listen to the following track"""
-AUDITORY_IMAGERY_ASSESSMENT = ["""During the silences, did you imagine the missing part of the different audio tracks you’ve heard ?"""]
-FAMILIARITY_ASSESSMENT = ["""Did you recognise the song ?"""]
+AUDITORY_IMAGERY_ASSESSMENT = ("During the silences, did you imagine the missing part of the different audio tracks you’ve heard ?", ['never', 'a few times', 'half the time', 'most of the time', 'always'])
+FAMILIARITY_ASSESSMENT = ("Did you recognise the song ?", ['no', 'maybe', 'yes'])
 
-class Playlist(object):
-    def __init__(self, csv_path):
+
+class Playlist_StandAlone(object):
+    def __init__(self, csv_path, exp_win):
+        self.exp_win = exp_win
+        self._events = []
+        
         file = open(csv_path, "r")
         self.playlist = list(csv.reader(file, delimiter=","))
         file.close()
 
-    def __run__(self):
-        pass
+    def _log_event(self, event):
+        self._events.append(event)
+
+    def save(self):
+        if len(self._events):
+            fname = './Results/test'
+            df = pandas.DataFrame(self._events)
+            df.to_csv(fname, sep="\t", index=False)
+
+    def run(self):
+        for i, track in enumerate(self.playlist):
+            track_path = track[0]
+            track_name = os.path.split(track_path)[1]
+            Display_track = Track(self.exp_win, track_path)
+            Display_track.run()
+            imagery_form = Questionnaire(self.exp_win,self._events, 
+                                         trial_type='IMAGERY', name=track_name, 
+                                         question=AUDITORY_IMAGERY_ASSESSMENT[0], 
+                                         answers=AUDITORY_IMAGERY_ASSESSMENT[1])
+            imagery_form.run()    
+            familiarity_form = Questionnaire(self.exp_win, self._events,
+                                             trial_type='FAMILIARITY', name=track_name, 
+                                             question=FAMILIARITY_ASSESSMENT[0], 
+                                             answers=FAMILIARITY_ASSESSMENT[1])
+            familiarity_form.run()
+        self.save()
 
 class Track(object):
 #Derived from SoundTaskBase (Narratives task)
 
-    def __init__(self, sound_file, exp_win, initial_wait=4, final_wait=2, num=None):
+    def __init__(self, exp_win, sound_file, initial_wait=4, final_wait=2):
         #super().__init__(**kwargs)
         #--------probably in kwargs--------------
         self.instruction = DEFAULT_INSTRUCTION
         self.exp_win = exp_win
         #----------------------------------------
         self.initial_wait, self.final_wait = initial_wait, final_wait
-        self.num = num
         if os.path.exists(sound_file):
             self.sound_file = sound_file
         else:
@@ -73,26 +99,26 @@ class Track(object):
 
 class Questionnaire(object):
         
-        def __init__(self, exp_win, question = None, answers = None, y_spacing=80):
-            self.exp_win  = exp_win
-            self.ISI = core.StaticPeriod(win=exp_win)
+        def __init__(self, exp_win, events, trial_type=None, name = None, question = None, answers = None, y_spacing=80):
+            self.exp_win = exp_win
+            self._events = events
+            self.ISI = core.StaticPeriod(win=self.exp_win)
             #event.getKeys('udlra') # flush keys
-            if question is None:
-                return
-            else:
-                self.question = question
-                self.answers = answers
-                self.n_pts = len(answers)
-                self.legends = []
-                self.response = 0
+            self.trial_type = trial_type
+            self.name = name
+            self.question = question
+            self.answers = answers
+            self.n_pts = len(answers)
+            self.legends = []
+            self.response = 0
 
-                self.exp_win.setColor([0] * 3, colorSpace='rgb')
-                self.win_width = self.exp_win.size[0]
-                self.y_spacing = y_spacing
-                self.scales_block_x = self.win_width * 0.25
-                self.scales_block_y = self.exp_win.size[1] * 0.1
-                self.extent = self.win_width * 0.2
-                self.x_spacing= (self.scales_block_x  + self.extent) * 2 / (self.n_pts - 1)
+            self.exp_win.setColor([0] * 3, colorSpace='rgb')
+            self.win_width = self.exp_win.size[0]
+            self.y_spacing = y_spacing
+            self.scales_block_x = self.win_width * 0.25
+            self.scales_block_y = self.exp_win.size[1] * 0.1
+            self.extent = self.win_width * 0.2
+            self.x_spacing= (self.scales_block_x  + self.extent) * 2 / (self.n_pts - 1)
 
         def _legend(self, text, pos):
             self.legends.append(visual.TextStim(
@@ -164,7 +190,7 @@ class Questionnaire(object):
             self._setup()
             n_flips = 0
             while True:
-                self._handle_controller_presses(self.exp_win)
+                self._handle_controller_presses()
                 new_key_pressed = [k[0] for k in self._new_key_pressed]
 
                 if "r" in new_key_pressed and self.response < self.n_pts - 1:
@@ -172,7 +198,14 @@ class Questionnaire(object):
                 elif "l" in new_key_pressed and self.response > 0:
                     self.response -= 1
                 elif "a" in new_key_pressed:
+                    self._events.append({
+                        "trial_type": self.trial_type,
+                        "track": self.name,
+                        "question": self.question,
+                        "value": self.answers[self.response]
+                    })
                     break
+
                 elif n_flips > 1:
                     time.sleep(.01)
                     continue
@@ -193,32 +226,63 @@ class Questionnaire(object):
 
 #-------------------------------------------------------------------------------------------------------------
 
-            elif "a" in new_key_pressed:
-                for (key, question, n_pts), value in zip(questions, responses):
-                    self._log_event({
-                        "trial_type": "questionnaire-answer",
-                        "question": key,
-                        "value": value
-                    })
-                break
-            elif n_flips > 1:
-                time.sleep(.01)
-                continue
 
-            if n_flips > 0: #avoid double log when first loading questionnaire
-                self._log_event({
-                    "trial_type": "questionnaire-value-change",
-                    "question": questions[active_question][0],
-                    "value": responses[active_question]
-                })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class Playlist_cneuromod(object):#inherit from class Task(object) in task_base.py
+    def __init__(self, name, fname_base, csv_path):
+        file = open(csv_path, "r")
+        self.playlist = list(csv.reader(file, delimiter=","))
+        file.close()
+
+    #---------from class Task(object) in task_base.py------------------------------------
+    def _generate_unique_filename(self, suffix, ext="tsv"):
+        fname = os.path.join(
+            self.output_path, f"{self.output_fname_base}_{self.name}_{suffix}.{ext}"
+        )
+        fi = 1
+        while os.path.exists(fname):
+            fname = os.path.join(
+                self.output_path,
+                f"{self.output_fname_base}_{self.name}_{suffix}-{fi:03d}.{ext}",
+            )
+            fi += 1
+        return fname
 
     def _save(self):
         out_fname = self._generate_unique_filename("events", "tsv")
         other_events = pandas.DataFrame(self._events)
-        events_df = self.trials.saveAsWideText(out_fname)
-        if isinstance(events_df, pandas.DataFrame):
-            events_df = pandas.concat([events_df, other_events])
-        else:
-            events_df = other_events
+        events_df = other_events
         events_df.to_csv(out_fname, sep="\t", index=False)
         return False
+
+    def _log_event(self, event, clock='task'):
+        if clock == 'task':
+            onset = self.task_timer.getTime()
+        elif clock == 'flip':
+            onset = self._exp_win_last_flip_time - self._exp_win_first_flip_time
+        event.update({"onset": onset, "sample": time.monotonic()})
+        self._events.append(event)
+
+    def save(self):
+        # call custom task _save()
+        save_events = self._save()
+        if save_events is None and len(self._events):
+            fname = self._generate_unique_filename("events", "tsv")
+            df = pandas.DataFrame(self._events)
+            df.to_csv(fname, sep="\t", index=False)
+    #---------------------------------------------------------------------------------------------
